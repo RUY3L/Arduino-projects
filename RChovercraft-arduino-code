@@ -1,0 +1,190 @@
+/*
+  Basic control of custom built Hovercraft. HC-05 BT module is used as input and BLDC, servo, LED are outputs.
+  Most controls are toggles and only use 4 buttons for control and 2 for status check.
+ */
+
+#include <SoftwareSerial.h>
+#include <Servo.h>
+
+#define rudder_Pin 4 
+#define thrust_Pin 5
+#define hover_Pin 6
+
+int left_control;
+int right_control;
+int state = 0;
+int state_thrust = 0;
+int flag; 
+int LED = 13;
+int STAT;
+
+
+Servo Rudder;     
+Servo Thruster;
+Servo Hover;
+SoftwareSerial MyBlue(2, 3);      // RX | TX pins
+
+//TIMER VARIABLES
+int timer1;
+unsigned long start_time;
+unsigned long stop_time;
+int delay_time = 1000;
+//^^^TIMER VARIABLES
+
+void setup() {
+    Serial.begin(9600);           //Starts serial coms to analyze conditions on PC
+    MyBlue.begin(9600);           //Starts serial for Bluetooth to send and receive data
+    pinMode(LED, OUTPUT);
+    pinMode(2, INPUT);
+    pinMode(3, OUTPUT);
+    digitalWrite(LED, HIGH);      //LED indicator to check active status
+    Rudder.attach(rudder_Pin);    
+    Thruster.attach(thrust_Pin, 1000,2000);   //Speeds set by the ms for min and max speeds
+    Hover.attach(hover_Pin, 1000, 2000);
+    delay(1);                     //waits for ESC to begin calibration 
+    Thruster.write(10);           //writes lowest speed or OFF speed.
+    Hover.write(10);              //writes lowest speed or OFF speed.
+    delay(5000);                  //Mandatory wait time to allow calibration to finish
+    Serial.println("They are ready to launch PC!");  
+    MyBlue.println("They are ready to launch BT!");
+}
+
+void loop() 
+{
+    timer();
+//  while (Serial.available()>0)          //PC - serial monitor inputs for testing before bluetooth use
+//  { //wait for data received
+//    data_input = Serial.parseInt();
+//    }
+   while (MyBlue.available()){            //Constant BT update received in integer form
+     flag = MyBlue.read();
+   
+   if (flag > 48){                        //Limit in int for excluding ghost inputs like CR or LF. 48 is 0 in ASCII
+    STAT = flag;
+    Serial.print("message from computer STAT: ");
+    Serial.println(STAT);
+    MyBlue.print("message from bluetooth STAT: "); 
+    MyBlue.println(STAT);
+
+    if (STAT == 'A')                      //LED status check
+   { digitalWrite(LED, HIGH); 
+     Serial.println("LED On");} 
+ 
+   else if (STAT == 'B') 
+   { digitalWrite(LED, LOW); 
+     Serial.println("LED Off");}
+     
+  if (timer1 > 0)                         //timer based input read for all_control(switch...case) function
+  {
+    all_control(STAT);
+    STAT = 0;                             //resets input to take a repeating input if needed
+    timer1=0;}
+   } 
+  }
+}
+
+int all_control(int i){
+    switch (i) {
+      case 0:
+        break;
+      case 'C': 
+        Serial.println(i);
+        state = !state;                   //Toggles state from 1 and 0 or ON and OFF
+        Hover_motor(state);
+        break;
+      case 'D':
+        Serial.print("Thrust, ");
+        Serial.println(i);
+        state_thrust = !state_thrust;     //Toggles thrust state from 1 and 0 or ON and OFF
+        Thrust_motor(state_thrust);
+        break;
+      case 'E':
+        Serial.print("Left, ");           
+        Serial.println(i);
+        left_control = !left_control;     //Toggles rudder LEFT or resets
+        Rudder_left(left_control);
+        break;
+      case 'F':
+        Serial.print("Right, ");
+        Serial.println(i);
+        right_control = !right_control;   //Toggles rudder RIGHT or resets
+        Rudder_right(right_control);
+        break;
+      default:
+        Serial.print("Inside default: i = ");     //Catches all other inputs
+        Serial.println(i);
+        break;
+    }
+}
+
+
+void Rudder_left(int left_control)
+{
+  if (left_control==1)
+  {
+    right_control = 0;                    //resets right_control to allow for RIGHT button read again
+    Serial.println("LEFT");
+    Rudder.write(25);
+  }
+  else
+  {
+    Serial.println("Center");
+    Rudder.write(90);
+    }
+  }
+
+void Rudder_right(int right_control)
+{
+  if (right_control==1)
+  {
+    left_control = 0;                      //resets left_control to allow for LEFT button read again
+    Serial.println("RIGHT");
+    Rudder.write(155);
+  }
+  else
+  {
+    Serial.println("Center");
+    Rudder.write(90);
+    }
+  }
+
+
+void Thrust_motor(int state_th)
+{
+if (state_th==1)
+  {
+    Serial.println("Thruster toggle on"); 
+    Thruster.write(60);                            //Set speed for limited serial input case 
+  }                                                   //Can be set a variable input from bluetooth for finer control with custom app
+  else
+  {
+    Serial.println("Thruster toggle off");
+    Thruster.write(0);
+    }
+}
+
+void Hover_motor(int state)
+{
+  if (state==1)
+  {
+    Serial.println("Hover toggle on");
+    Hover.write(80); 
+  }                                                 
+  else
+  {
+    Serial.println("Hover toggle off");
+    Hover.write(0);
+    }
+}
+
+//TIMER CODE
+void timer(void)                                    //Allows program to run with no delay and allows for delay where required
+{
+  if (millis()>stop_time)
+  {
+    start_time = millis();
+    stop_time = start_time+delay_time;
+    timer1++;
+    }
+  }
+//^^^TIMER CODE
